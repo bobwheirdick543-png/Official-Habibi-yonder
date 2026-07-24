@@ -1,17 +1,19 @@
 import express from 'express'
 import TelegramBot from 'node-telegram-bot-api'
-import makeWASocket, { 
+import baileys, { 
     DisconnectReason, 
     useMultiFileAuthState,
     Browsers
 } from '@whiskeysockets/baileys'
+
+// ESM Interop Fix: Handles CJS default export wrapper
+const makeWASocket = baileys.default || baileys
 
 const app = express()
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID
 
-// Sanity check: Fail fast if Railway env vars are missing or misconfigured
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_OWNER_ID) {
     console.error("CRITICAL: Missing TELEGRAM_BOT_TOKEN or TELEGRAM_OWNER_ID in environment variables.")
     process.exit(1)
@@ -31,8 +33,7 @@ async function connectToWhatsApp() {
         auth: state,
         printQRInTerminal: false,
         syncFullHistory: true,
-        // REQUIRED: Spoof a browser so WhatsApp accepts the pairing code request
-        browser: Browsers.ubuntu('Chrome') 
+        browser: Browsers.ubuntu('Chrome')
     })
     
     sock.ev.on('connection.update', async (update) => {
@@ -40,7 +41,6 @@ async function connectToWhatsApp() {
         
         if (qr && !sock.authState.creds.registered) {
             console.log('Ready for pairing via Telegram')
-            // Catching promises to prevent Unhandled Rejection crashes
             bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is ready. Send /pair <phone number>')
                .catch(console.error)
         }
@@ -59,8 +59,7 @@ async function connectToWhatsApp() {
             
             if (shouldReconnect) {
                 console.log('Reconnecting in 5 seconds...')
-                // Backoff timer prevents endless loops that exhaust Railway CPU/Filesystem
-                setTimeout(connectToWhatsApp, 5000) 
+                setTimeout(connectToWhatsApp, 5000)
             } else {
                 console.log('Logged out.')
                 bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Habibi logged out.')
@@ -111,4 +110,3 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
     connectToWhatsApp()
 })
-    
