@@ -24,45 +24,39 @@ async function connectToWhatsApp() {
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        syncFullHistory: false
+        syncFullHistory: true
     })
     
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update
+        const { connection, lastDisconnect, qr } = update
+        
+        if (qr && !sock.authState.creds.registered) {
+            console.log('Ready for pairing via Telegram')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is ready. Send /pair <phone number>')
+        }
         
         if (connection === 'open') {
-            console.log('✅ Habibi Connected Successfully!')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online and connected!')
+            console.log('✅ Habibi Connected successfully!')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online!')
         }
         
         if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+            const shouldReconnect = 
+                (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut)
             
-            console.log('Connection closed. Code:', statusCode)
+            console.log('Connection closed:', lastDisconnect?.error?.message)
             
             if (shouldReconnect) {
-                console.log('Reconnecting in 5 seconds...')
-                setTimeout(connectToWhatsApp, 5000)
+                console.log('Reconnecting...')
+                connectToWhatsApp()
             } else {
+                console.log('Logged out.')
                 bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Habibi logged out.')
             }
         }
     })
     
     sock.ev.on('creds.update', saveCreds)
-    
-    // Your message handler (this is where welcome spam likely comes from)
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        for (const msg of messages) {
-            try {
-                // Call your message handler here
-                // await handleIncomingMessage(sock, msg)
-            } catch (e) {
-                console.error(e)
-            }
-        }
-    })
 }
 
 // Telegram Commands
@@ -74,20 +68,20 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
 
     try {
         const code = await sock.requestPairingCode(phone)
-        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nUse in WhatsApp > Linked Devices > Link with phone number`)
+        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nWhatsApp > Linked Devices > Link a Device`)
     } catch (e) {
-        bot.sendMessage(msg.chat.id, "Failed to generate code. Try again.")
+        bot.sendMessage(msg.chat.id, "Failed to generate code.")
     }
 })
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect Habibi.")
+    bot.sendMessage(msg.chat.id, "👋 Habibi pairing ready.\nUse /pair <number>")
 })
 
-app.get('/', (req, res) => res.send('Habibi Running ✅'))
+app.get('/', (req, res) => res.send('Habibi Running'))
 
 app.listen(process.env.PORT || 3000, () => {
-    console.log('🚀 Server running')
+    console.log('Server running')
     connectToWhatsApp()
 })
