@@ -31,8 +31,8 @@ async function connectToWhatsApp() {
         const { connection, lastDisconnect } = update
         
         if (connection === 'open') {
-            console.log('✅ Habibi Connected!')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online!')
+            console.log('✅ Habibi Connected Successfully!')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online and connected!')
         }
         
         if (connection === 'close') {
@@ -42,7 +42,7 @@ async function connectToWhatsApp() {
             console.log('Connection closed. Code:', statusCode)
             
             if (shouldReconnect) {
-                console.log('Reconnecting...')
+                console.log('Reconnecting in 5 seconds...')
                 setTimeout(connectToWhatsApp, 5000)
             } else {
                 bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Habibi logged out.')
@@ -51,9 +51,21 @@ async function connectToWhatsApp() {
     })
     
     sock.ev.on('creds.update', saveCreds)
+    
+    // Your message handler (this is where welcome spam likely comes from)
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        for (const msg of messages) {
+            try {
+                // Call your message handler here
+                // await handleIncomingMessage(sock, msg)
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    })
 }
 
-// Commands
+// Telegram Commands
 bot.onText(/\/pair (.+)/, async (msg, match) => {
     if (!isOwner(msg)) return bot.sendMessage(msg.chat.id, "❌ Owner only.")
 
@@ -62,20 +74,20 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
 
     try {
         const code = await sock.requestPairingCode(phone)
-        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nWhatsApp > Linked Devices > Link with phone number`)
+        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nUse in WhatsApp > Linked Devices > Link with phone number`)
     } catch (e) {
-        bot.sendMessage(msg.chat.id, "Failed to generate code.")
+        bot.sendMessage(msg.chat.id, "Failed to generate code. Try again.")
     }
 })
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect.")
+    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect Habibi.")
 })
 
 app.get('/', (req, res) => res.send('Habibi Running ✅'))
 
 app.listen(process.env.PORT || 3000, () => {
-    console.log('Server running')
+    console.log('🚀 Server running')
     connectToWhatsApp()
 })
