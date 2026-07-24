@@ -1,14 +1,10 @@
 import express from 'express'
 import TelegramBot from 'node-telegram-bot-api'
-import { 
-    makeWASocket, 
+import makeWASocket, { 
     DisconnectReason, 
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion,
-    Browsers 
+    useMultiFileAuthState 
 } from '@whiskeysockets/baileys'
-import pino from 'pino'
-import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
+import { Boom } from '@hapi/boom'
 
 const app = express()
 
@@ -25,49 +21,48 @@ function isOwner(msg) {
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
-    const { version } = await fetchLatestBaileysVersion()
-
+    
     sock = makeWASocket({
         auth: state,
-        version,
-        logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
         syncFullHistory: false
     })
-
+    
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
-
-        if (qr) {
-            console.log('QR Code received (for fallback)')
+        
+        if (qr && !sock.authState.creds.registered) {
+            console.log('Ready for pairing')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Ready for pairing. Send /pair <number>')
         }
-
+        
         if (connection === 'open') {
-            console.log('✅ Habibi Connected Successfully!')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online and connected.')
+            console.log('✅ Habibi Connected!')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online!')
         }
-
+        
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
+            console.log('Connection closed:', lastDisconnect?.error?.message)
+            
             if (shouldReconnect) {
                 console.log('Reconnecting...')
                 setTimeout(connectToWhatsApp, 5000)
+            } else {
+                bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Logged out.')
             }
         }
     })
-
+    
+    sock.ev.on('creds.update', saveCreds)
+    
+    // Attach your message handler here
     sock.ev.on('messages.upsert', async ({ messages }) => {
         for (const msg of messages) {
-            await handleIncomingMessage(sock, msg).catch(console.error)
+            // Call your handler
+            // await handleIncomingMessage(sock, msg)
         }
     })
-
-    sock.ev.on('group-participants.update', async (update) => {
-        await handleGroupParticipantsUpdate(sock, update).catch(console.error)
-    })
-
-    sock.ev.on('creds.update', saveCreds)
 }
 
 // Telegram Commands
@@ -77,19 +72,17 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
     const phone = match[1].replace(/\D/g, '')
     if (!phone) return bot.sendMessage(msg.chat.id, "Invalid number.")
 
-    bot.sendMessage(msg.chat.id, `Requesting pairing code for ${phone}...`)
-
     try {
         const code = await sock.requestPairingCode(phone)
         bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nUse in WhatsApp > Linked Devices`)
     } catch (e) {
-        bot.sendMessage(msg.chat.id, "Failed to generate code. Try again.")
+        bot.sendMessage(msg.chat.id, "Failed to generate code.")
     }
 })
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, "👋 Habibi is ready.\nUse /pair <number> to connect.")
+    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect Habibi.")
 })
 
 app.get('/', (req, res) => res.send('Habibi Running'))
