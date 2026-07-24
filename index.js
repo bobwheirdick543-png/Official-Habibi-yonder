@@ -4,7 +4,6 @@ import makeWASocket, {
     DisconnectReason, 
     useMultiFileAuthState 
 } from '@whiskeysockets/baileys'
-import { Boom } from '@hapi/boom'
 
 const app = express()
 
@@ -29,12 +28,7 @@ async function connectToWhatsApp() {
     })
     
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update
-        
-        if (qr && !sock.authState.creds.registered) {
-            console.log('Ready for pairing')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Ready for pairing. Send /pair <number>')
-        }
+        const { connection, lastDisconnect } = update
         
         if (connection === 'open') {
             console.log('✅ Habibi Connected!')
@@ -42,39 +36,33 @@ async function connectToWhatsApp() {
         }
         
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
-            console.log('Connection closed:', lastDisconnect?.error?.message)
+            const statusCode = lastDisconnect?.error?.output?.statusCode
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+            
+            console.log('Connection closed. Code:', statusCode)
             
             if (shouldReconnect) {
                 console.log('Reconnecting...')
                 setTimeout(connectToWhatsApp, 5000)
             } else {
-                bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Logged out.')
+                bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Habibi logged out.')
             }
         }
     })
     
     sock.ev.on('creds.update', saveCreds)
-    
-    // Attach your message handler here
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        for (const msg of messages) {
-            // Call your handler
-            // await handleIncomingMessage(sock, msg)
-        }
-    })
 }
 
-// Telegram Commands
+// Commands
 bot.onText(/\/pair (.+)/, async (msg, match) => {
-    if (!isOwner(msg)) return bot.sendMessage(msg.chat.id, "Owner only.")
+    if (!isOwner(msg)) return bot.sendMessage(msg.chat.id, "❌ Owner only.")
 
     const phone = match[1].replace(/\D/g, '')
-    if (!phone) return bot.sendMessage(msg.chat.id, "Invalid number.")
+    if (!phone) return bot.sendMessage(msg.chat.id, "❌ Invalid number.")
 
     try {
         const code = await sock.requestPairingCode(phone)
-        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nUse in WhatsApp > Linked Devices`)
+        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nWhatsApp > Linked Devices > Link with phone number`)
     } catch (e) {
         bot.sendMessage(msg.chat.id, "Failed to generate code.")
     }
@@ -82,10 +70,10 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect Habibi.")
+    bot.sendMessage(msg.chat.id, "👋 Send /pair <number> to connect.")
 })
 
-app.get('/', (req, res) => res.send('Habibi Running'))
+app.get('/', (req, res) => res.send('Habibi Running ✅'))
 
 app.listen(process.env.PORT || 3000, () => {
     console.log('Server running')
