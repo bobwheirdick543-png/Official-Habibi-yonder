@@ -1,112 +1,142 @@
 import express from 'express'
+import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
-import baileys, { 
-    DisconnectReason, 
-    useMultiFileAuthState,
-    Browsers
-} from '@whiskeysockets/baileys'
+import baileysPkg from '@whiskeysockets/baileys'
+import pino from 'pino'
+import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
+import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
+import { adminRouter } from './lib/adminApi.js'
+import { initWebSocket } from './lib/websocket.js'
 
-// ESM Interop Fix: Handles CJS default export wrapper
-const makeWASocket = baileys.default || baileys
+const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, Browsers } = baileysPkg
 
 const app = express()
+const server = http.createServer(app)
+
+app.use('/api', adminRouter)
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID
 
-if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_OWNER_ID) {
-    console.error("CRITICAL: Missing TELEGRAM_BOT_TOKEN or TELEGRAM_OWNER_ID in environment variables.")
-    process.exit(1)
-}
-
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true })
+
 let sock = null
+let isReadyForPairing = false
+
+function sanitizePhoneNumber(phone) {
+    return phone.replace(/\D/g, '')
+}
 
 function isOwner(msg) {
     return String(msg.chat.id) === String(TELEGRAM_OWNER_ID)
 }
 
+function notifyOwner(text) {
+    if (TELEGRAM_OWNER_ID) {
+        bot.sendMessage(TELEGRAM_OWNER_ID, text)
+    }
+}
+
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
-    
+    const { state, saveCreds } = await useSupabaseAuthState()
+    const { version } = await fetchLatestBaileysVersion()
+
     sock = makeWASocket({
         auth: state,
+        version,
+        logger: pino({ level: 'silent' }),
+        browser: Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
-        syncFullHistory: true,
-        browser: Browsers.ubuntu('Chrome')
+        syncFullHistory: true
     })
-    
-    sock.ev.on('connection.update', async (update) => {
+
+    app.set('sock', sock)
+
+    sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
-        
+
         if (qr && !sock.authState.creds.registered) {
-            console.log('Ready for pairing via Telegram')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is ready. Send /pair <phone number>')
-               .catch(console.error)
+            isReadyForPairing = true
+            notifyOwner('Habibi is ready to pair. Send /pair <phone number> (country code, no +).')
         }
-        
-        if (connection === 'open') {
-            console.log('✅ Habibi Connected successfully!')
-            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online!')
-               .catch(console.error)
-        }
-        
+
         if (connection === 'close') {
-            const shouldReconnect = 
-                (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut)
-            
+            const shouldReconnect =
+                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+
             console.log('Connection closed:', lastDisconnect?.error?.message)
-            
+            isReadyForPairing = false
+
             if (shouldReconnect) {
-                console.log('Reconnecting in 5 seconds...')
-                setTimeout(connectToWhatsApp, 5000)
+                console.log('Reconnecting...')
+                connectToWhatsApp()
             } else {
                 console.log('Logged out.')
-                bot.sendMessage(TELEGRAM_OWNER_ID, '❌ Habibi logged out.')
-                   .catch(console.error)
+                notifyOwner('Habibi got logged out. Restarting — watch for the ready-to-pair message.')
+            }
+        } else if (connection === 'open') {
+            console.log('Habibi connected successfully')
+            isReadyForPairing = false
+            notifyOwner('Habibi connected successfully.')
+        }
+    })
+
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        for (const msg of messages) {
+            try {
+                await handleIncomingMessage(sock, msg)
+            } catch (error) {
+                console.error('Error handling message:', error)
             }
         }
     })
-    
+
+    sock.ev.on('group-participants.update', async (update) => {
+        try {
+            await handleGroupParticipantsUpdate(sock, update)
+        } catch (error) {
+            console.error('Error handling group participants update:', error)
+        }
+    })
+
     sock.ev.on('creds.update', saveCreds)
 }
 
-// Telegram Commands
 bot.onText(/\/pair (.+)/, async (msg, match) => {
-    if (!isOwner(msg)) {
-        return bot.sendMessage(msg.chat.id, "❌ Owner only.").catch(console.error)
+    if (!isOwner(msg)) return
+
+    if (!sock || !isReadyForPairing || sock.authState.creds.registered) {
+        return bot.sendMessage(msg.chat.id, 'Not ready yet, or already paired.')
     }
 
-    const phone = match[1].replace(/\D/g, '')
-    if (!phone) {
-        return bot.sendMessage(msg.chat.id, "❌ Invalid number.").catch(console.error)
+    const sanitized = sanitizePhoneNumber(match[1])
+    if (!sanitized) {
+        return bot.sendMessage(msg.chat.id, 'Invalid phone number.')
     }
 
     try {
-        if (!sock) {
-            return bot.sendMessage(msg.chat.id, "❌ WhatsApp socket is initializing, wait a moment.").catch(console.error)
-        }
-        
-        const code = await sock.requestPairingCode(phone)
-        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nWhatsApp > Linked Devices > Link a Device`)
-           .catch(console.error)
-    } catch (e) {
-        console.error("Pairing code error:", e)
-        bot.sendMessage(msg.chat.id, "❌ Failed to generate code. Check server logs.")
-           .catch(console.error)
+        const code = await sock.requestPairingCode(sanitized)
+        bot.sendMessage(
+            msg.chat.id,
+            `Pairing code: ${code}\n\nWhatsApp > Linked Devices > Link a Device > Enter this code.`
+        )
+    } catch (error) {
+        console.error('Failed to request pairing code:', error)
+        bot.sendMessage(msg.chat.id, 'Failed to generate pairing code. Try again.')
     }
 })
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, "👋 Habibi pairing ready.\nUse /pair <number>")
-       .catch(console.error)
+    bot.sendMessage(msg.chat.id, 'Habibi pairing control online. Use /pair <phone number> once she says she is ready.')
 })
 
-app.get('/', (req, res) => res.send('Habibi Running on Railway!'))
+app.get('/', (req, res) => {
+    res.send('Habibi is running')
+})
 
-const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
+server.listen(process.env.PORT || 3000, () => {
+    console.log('Health check server running')
+    initWebSocket(server)
     connectToWhatsApp()
 })
