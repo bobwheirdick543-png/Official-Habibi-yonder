@@ -1,12 +1,18 @@
 import express from 'express'
-import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
-import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys'
+import { 
+    makeWASocket, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion, 
+    Browsers 
+} from '@whiskeysockets/baileys'
 import pino from 'pino'
 import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
 import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
+import fs from 'fs'
+import path from 'path'
 
 const app = express()
 const server = http.createServer(app)
