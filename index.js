@@ -1,24 +1,16 @@
 import express from 'express'
-import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
 import { 
     makeWASocket, 
     DisconnectReason, 
-    fetchLatestBaileysVersion, 
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion,
     Browsers 
 } from '@whiskeysockets/baileys'
 import pino from 'pino'
-import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
 import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
-import { adminRouter } from './lib/adminApi.js'
-import { initWebSocket } from './lib/websocket.js'
-import fs from 'fs'
-import path from 'path'
 
 const app = express()
-const server = http.createServer(app)
-
-app.use('/api', adminRouter)
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID
@@ -26,24 +18,13 @@ const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true })
 
 let sock = null
-let isReadyForPairing = false
-
-function sanitizePhoneNumber(phone) {
-    return phone.replace(/\D/g, '')
-}
 
 function isOwner(msg) {
     return String(msg.chat.id) === String(TELEGRAM_OWNER_ID)
 }
 
-function notifyOwner(text) {
-    if (TELEGRAM_OWNER_ID) {
-        bot.sendMessage(TELEGRAM_OWNER_ID, text)
-    }
-}
-
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useSupabaseAuthState()
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
     const { version } = await fetchLatestBaileysVersion()
 
     sock = makeWASocket({
@@ -52,96 +33,68 @@ async function connectToWhatsApp() {
         logger: pino({ level: 'silent' }),
         browser: Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
-        syncFullHistory: true
+        syncFullHistory: false
     })
 
-    app.set('sock', sock)
-
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
 
-        if (qr && !sock.authState.creds.registered) {
-            isReadyForPairing = true
-            notifyOwner('Habibi is ready to pair. Send /pair <phone number> (country code, no +).')
+        if (qr) {
+            console.log('QR Code received (for fallback)')
+        }
+
+        if (connection === 'open') {
+            console.log('✅ Habibi Connected Successfully!')
+            bot.sendMessage(TELEGRAM_OWNER_ID, '✅ Habibi is now online and connected.')
         }
 
         if (connection === 'close') {
-            const shouldReconnect =
-                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-
-            console.log('Connection closed:', lastDisconnect?.error?.message)
-            isReadyForPairing = false
-
+            const shouldReconnect = (lastDisconnect?.error as any)?.output?.statusCode !== DisconnectReason.loggedOut
             if (shouldReconnect) {
                 console.log('Reconnecting...')
-                connectToWhatsApp()
-            } else {
-                console.log('Logged out.')
-                notifyOwner('Habibi got logged out. Restarting — watch for the ready-to-pair message.')
+                setTimeout(connectToWhatsApp, 5000)
             }
-        } else if (connection === 'open') {
-            console.log('Habibi connected successfully')
-            isReadyForPairing = false
-            notifyOwner('Habibi connected successfully.')
         }
     })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         for (const msg of messages) {
-            try {
-                await handleIncomingMessage(sock, msg)
-            } catch (error) {
-                console.error('Error handling message:', error)
-            }
+            await handleIncomingMessage(sock, msg).catch(console.error)
         }
     })
 
     sock.ev.on('group-participants.update', async (update) => {
-        try {
-            await handleGroupParticipantsUpdate(sock, update)
-        } catch (error) {
-            console.error('Error handling group participants update:', error)
-        }
+        await handleGroupParticipantsUpdate(sock, update).catch(console.error)
     })
 
     sock.ev.on('creds.update', saveCreds)
 }
 
+// Telegram Commands
 bot.onText(/\/pair (.+)/, async (msg, match) => {
-    if (!isOwner(msg)) return
+    if (!isOwner(msg)) return bot.sendMessage(msg.chat.id, "Owner only.")
 
-    if (!sock || !isReadyForPairing || sock.authState.creds.registered) {
-        return bot.sendMessage(msg.chat.id, 'Not ready yet, or already paired.')
-    }
+    const phone = match[1].replace(/\D/g, '')
+    if (!phone) return bot.sendMessage(msg.chat.id, "Invalid number.")
 
-    const sanitized = sanitizePhoneNumber(match[1])
-    if (!sanitized) {
-        return bot.sendMessage(msg.chat.id, 'Invalid phone number.')
-    }
+    bot.sendMessage(msg.chat.id, `Requesting pairing code for ${phone}...`)
 
     try {
-        const code = await sock.requestPairingCode(sanitized)
-        bot.sendMessage(
-            msg.chat.id,
-            `Pairing code: ${code}\n\nWhatsApp > Linked Devices > Link a Device > Enter this code.`
-        )
-    } catch (error) {
-        console.error('Failed to request pairing code:', error)
-        bot.sendMessage(msg.chat.id, 'Failed to generate pairing code. Try again.')
+        const code = await sock.requestPairingCode(phone)
+        bot.sendMessage(msg.chat.id, `🔑 Pairing Code: ${code}\n\nUse in WhatsApp > Linked Devices`)
+    } catch (e) {
+        bot.sendMessage(msg.chat.id, "Failed to generate code. Try again.")
     }
 })
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, 'Habibi pairing control online. Use /pair <phone number> once she says she is ready.')
+    bot.sendMessage(msg.chat.id, "👋 Habibi is ready.\nUse /pair <number> to connect.")
 })
 
-app.get('/', (req, res) => {
-    res.send('Habibi is running')
-})
+app.get('/', (req, res) => res.send('Habibi Running'))
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log('Health check server running')
-    initWebSocket(server)
+app.listen(process.env.PORT || 3000, () => {
+    console.log('Server running')
     connectToWhatsApp()
 })
