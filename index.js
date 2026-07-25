@@ -71,8 +71,9 @@ async function connectToWhatsApp() {
                 console.log('Reconnecting...')
                 connectToWhatsApp()
             } else {
-                console.log('Logged out.')
-                notifyOwner('Habibi got logged out. Restarting — watch for the ready-to-pair message.')
+                console.log('Logged out. Starting a fresh session...')
+                notifyOwner('Habibi got logged out. Starting a fresh pairing session — watch for the ready-to-pair message.')
+                connectToWhatsApp()
             }
         } else if (connection === 'open') {
             console.log('Habibi connected successfully')
