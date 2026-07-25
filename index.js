@@ -24,6 +24,9 @@ let sock = null
 let isReadyForPairing = false
 let reconnectAttempts = 0
 let lastFailureNotifyTime = 0
+let autoRetryStopped = false
+
+const MAX_AUTO_RETRIES = 10
 
 function sanitizePhoneNumber(phone) {
     return phone.replace(/\D/g, '')
@@ -77,6 +80,17 @@ async function connectToWhatsApp() {
             console.log('Connection closed:', lastDisconnect?.error?.message)
             isReadyForPairing = false
             reconnectAttempts++
+
+            if (reconnectAttempts > MAX_AUTO_RETRIES) {
+                autoRetryStopped = true
+                console.log(`Stopped after ${reconnectAttempts} failed attempts. Waiting for /retry.`)
+                notifyOwnerThrottled(
+                    `Habibi couldn't connect after ${MAX_AUTO_RETRIES} tries and has stopped retrying automatically — this looks like a WhatsApp-side issue, not something retrying fixes. Send /retry when you want to try again.`,
+                    300000
+                )
+                return
+            }
+
             const delay = Math.min(reconnectAttempts * 5000, 60000)
 
             if (shouldReconnect) {
@@ -93,6 +107,7 @@ async function connectToWhatsApp() {
             console.log('Habibi connected successfully')
             isReadyForPairing = false
             reconnectAttempts = 0
+            autoRetryStopped = false
             notifyOwner('Habibi connected successfully.')
         }
     })
@@ -145,6 +160,19 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
     bot.sendMessage(msg.chat.id, 'Habibi pairing control online. Use /pair <phone number> once she says she is ready.')
+})
+
+bot.onText(/\/retry/, (msg) => {
+    if (!isOwner(msg)) return
+
+    if (!autoRetryStopped) {
+        return bot.sendMessage(msg.chat.id, 'Already running — no need to retry manually right now.')
+    }
+
+    reconnectAttempts = 0
+    autoRetryStopped = false
+    bot.sendMessage(msg.chat.id, 'Trying again...')
+    connectToWhatsApp()
 })
 
 app.get('/', (req, res) => {
