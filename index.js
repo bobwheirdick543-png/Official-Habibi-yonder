@@ -22,6 +22,8 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true })
 
 let sock = null
 let isReadyForPairing = false
+let reconnectAttempts = 0
+let lastFailureNotifyTime = 0
 
 function sanitizePhoneNumber(phone) {
     return phone.replace(/\D/g, '')
@@ -37,6 +39,14 @@ function notifyOwner(text) {
     }
 }
 
+function notifyOwnerThrottled(text, minIntervalMs = 60000) {
+    const now = Date.now()
+    if (now - lastFailureNotifyTime > minIntervalMs) {
+        lastFailureNotifyTime = now
+        notifyOwner(text)
+    }
+}
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useSupabaseAuthState()
     const { version } = await fetchLatestBaileysVersion()
@@ -44,7 +54,7 @@ async function connectToWhatsApp() {
     sock = makeWASocket({
         auth: state,
         version,
-        logger: pino({ level: 'silent' }),
+        logger: pino({ level: 'info' }),
         browser: Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
         syncFullHistory: true
@@ -55,7 +65,7 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
 
-        if (qr && !sock.authState.creds.registered) {
+        if (qr && !sock.authState.creds.registered && !isReadyForPairing) {
             isReadyForPairing = true
             notifyOwner('Habibi is ready to pair. Send /pair <phone number> (country code, no +).')
         }
@@ -66,18 +76,23 @@ async function connectToWhatsApp() {
 
             console.log('Connection closed:', lastDisconnect?.error?.message)
             isReadyForPairing = false
+            reconnectAttempts++
+            const delay = Math.min(reconnectAttempts * 5000, 60000)
 
             if (shouldReconnect) {
-                console.log('Reconnecting...')
-                connectToWhatsApp()
+                console.log(`Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempts})...`)
+                setTimeout(connectToWhatsApp, delay)
             } else {
-                console.log('Logged out. Starting a fresh session...')
-                notifyOwner('Habibi got logged out. Starting a fresh pairing session — watch for the ready-to-pair message.')
-                connectToWhatsApp()
+                console.log(`Logged out. Retrying in ${delay / 1000}s (attempt ${reconnectAttempts})...`)
+                notifyOwnerThrottled(
+                    'Habibi keeps getting logged out and is retrying automatically. Watch for the ready-to-pair message.'
+                )
+                setTimeout(connectToWhatsApp, delay)
             }
         } else if (connection === 'open') {
             console.log('Habibi connected successfully')
             isReadyForPairing = false
+            reconnectAttempts = 0
             notifyOwner('Habibi connected successfully.')
         }
     })
