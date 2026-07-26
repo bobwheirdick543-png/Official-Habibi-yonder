@@ -8,7 +8,13 @@ import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/mess
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
 
-const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, Browsers } = baileysPkg
+const {
+    default: makeWASocket,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    Browsers,
+    makeCacheableSignalKeyStore
+} = baileysPkg
 
 const app = express()
 const server = http.createServer(app)
@@ -33,7 +39,11 @@ function sanitizePhoneNumber(phone) {
 }
 
 function isOwner(msg) {
-    return String(msg.chat.id) === String(TELEGRAM_OWNER_ID)
+    const match = String(msg.chat.id) === String(TELEGRAM_OWNER_ID)
+    if (!match) {
+        console.log(`Ignored command from chat ID ${msg.chat.id} — TELEGRAM_OWNER_ID is set to ${TELEGRAM_OWNER_ID}`)
+    }
+    return match
 }
 
 function notifyOwner(text) {
@@ -55,15 +65,39 @@ async function connectToWhatsApp() {
     const { version } = await fetchLatestBaileysVersion()
 
     sock = makeWASocket({
-        auth: state,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }))
+        },
         version,
         logger: pino({ level: 'info' }),
         browser: Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
-        syncFullHistory: true
+        syncFullHistory: true,
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: false,
+        defaultQueryTimeoutMs: 60000,
+        connectTimeoutMs: 45000,
+        keepAliveIntervalMs: 25000,
+        retryRequestDelayMs: 200,
+        maxMsgRetryCount: 3,
+        emitOwnEvents: false,
+        fireInitQueries: true,
+        getMessage: async () => ({ conversation: '' })
     })
 
     app.set('sock', sock)
+
+    if (sock.keepAliveTimer) clearInterval(sock.keepAliveTimer)
+    sock.keepAliveTimer = setInterval(async () => {
+        try {
+            if (sock?.ws?.readyState === 1) {
+                await sock.sendPresenceUpdate('available')
+            }
+        } catch (error) {
+            console.error('Keep-alive failed:', error.message)
+        }
+    }, 25000)
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
@@ -146,6 +180,7 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
     }
 
     try {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
         const code = await sock.requestPairingCode(sanitized)
         bot.sendMessage(
             msg.chat.id,
