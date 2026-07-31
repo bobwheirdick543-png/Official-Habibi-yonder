@@ -76,7 +76,7 @@ async function connectToWhatsApp() {
         },
         ...(version ? { version } : {}),
         logger: pino({ level: 'info' }),
-        browser: Browsers.poucode ? Browsers.poucode('Chrome') : Browsers.ubuntu('Chrome'),
+        browser: Browsers.macOS('Chrome'),
         printQRInTerminal: false,
         syncFullHistory: false,
         markOnlineOnConnect: true,
