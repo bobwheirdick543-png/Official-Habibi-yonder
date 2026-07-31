@@ -2,20 +2,22 @@ import 'dotenv/config'
 import express from 'express'
 import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
-import baileysPkg from '@whiskeysockets/baileys'
+import 'dotenv/config'
+import express from 'express'
+import http from 'http'
+import TelegramBot from 'node-telegram-bot-api'
+import makeWASocket, {
+    DisconnectReason,
+    fetchLatestWAWebVersion,
+    Browsers,
+    makeCacheableSignalKeyStore
+} from '@whiskeysockets/baileys'
 import pino from 'pino'
 import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
 import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
 
-const {
-    default: makeWASocket,
-    DisconnectReason,
-    fetchLatestWAWebVersion,
-    Browsers,
-    makeCacheableSignalKeyStore
-} = baileysPkg
 
 const app = express()
 const server = http.createServer(app)
