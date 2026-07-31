@@ -4,7 +4,7 @@ import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
 import makeWASocket, {
     DisconnectReason,
-    fetchLatestWAWebVersion,
+    fetchLatestWaWebVersion,
     Browsers,
     makeCacheableSignalKeyStore
 } from '@whiskeysockets/baileys'
@@ -63,7 +63,7 @@ async function connectToWhatsApp() {
     
     let version
     try {
-        const waVersion = await fetchLatestWAWebVersion()
+        const waVersion = await fetchLatestWaWebVersion()
         version = waVersion.version
     } catch (err) {
         console.warn('Failed to fetch WA Web version, defaulting to fallback version.')
