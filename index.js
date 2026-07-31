@@ -2,10 +2,6 @@ import 'dotenv/config'
 import express from 'express'
 import http from 'http'
 import TelegramBot from 'node-telegram-bot-api'
-import 'dotenv/config'
-import express from 'express'
-import http from 'http'
-import TelegramBot from 'node-telegram-bot-api'
 import makeWASocket, {
     DisconnectReason,
     fetchLatestWAWebVersion,
@@ -17,7 +13,6 @@ import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
 import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
-
 
 const app = express()
 const server = http.createServer(app)
@@ -66,7 +61,6 @@ function notifyOwnerThrottled(text, minIntervalMs = 60000) {
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useSupabaseAuthState()
     
-    // Fetch latest version via PouCode implementation
     let version
     try {
         const waVersion = await fetchLatestWAWebVersion()
@@ -82,7 +76,7 @@ async function connectToWhatsApp() {
         },
         ...(version ? { version } : {}),
         logger: pino({ level: 'info' }),
-        browser: Browsers.poucode('Chrome'),
+        browser: Browsers.poucode ? Browsers.poucode('Chrome') : Browsers.ubuntu('Chrome'),
         printQRInTerminal: false,
         syncFullHistory: false,
         markOnlineOnConnect: true,
