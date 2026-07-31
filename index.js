@@ -12,7 +12,7 @@ import { initWebSocket } from './lib/websocket.js'
 const {
     default: makeWASocket,
     DisconnectReason,
-    fetchLatestBaileysVersion,
+    fetchLatestWAWebVersion,
     Browsers,
     makeCacheableSignalKeyStore
 } = baileysPkg
@@ -63,27 +63,36 @@ function notifyOwnerThrottled(text, minIntervalMs = 60000) {
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useSupabaseAuthState()
-    const { version } = await fetchLatestBaileysVersion()
+    
+    // Fetch latest version via PouCode implementation
+    let version
+    try {
+        const waVersion = await fetchLatestWAWebVersion()
+        version = waVersion.version
+    } catch (err) {
+        console.warn('Failed to fetch WA Web version, defaulting to fallback version.')
+    }
 
     sock = makeWASocket({
         auth: {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }))
         },
-        version,
+        ...(version ? { version } : {}),
         logger: pino({ level: 'info' }),
-        browser: Browsers.ubuntu('Chrome'),
+        browser: Browsers.poucode('Chrome'),
         printQRInTerminal: false,
-        syncFullHistory: true,
+        syncFullHistory: false,
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: false,
         defaultQueryTimeoutMs: 60000,
-        connectTimeoutMs: 45000,
+        connectTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
-        retryRequestDelayMs: 200,
-        maxMsgRetryCount: 3,
+        retryRequestDelayMs: 500,
+        maxMsgRetryCount: 5,
         emitOwnEvents: false,
         fireInitQueries: true,
+        aiLabel: false,
         getMessage: async () => ({ conversation: '' })
     })
 
@@ -120,7 +129,7 @@ async function connectToWhatsApp() {
                 autoRetryStopped = true
                 console.log(`Stopped after ${reconnectAttempts} failed attempts. Waiting for /retry.`)
                 notifyOwnerThrottled(
-                    `Habibi couldn't connect after ${MAX_AUTO_RETRIES} tries and has stopped retrying automatically — this looks like a WhatsApp-side issue, not something retrying fixes. Send /retry when you want to try again.`,
+                    `Habibi couldn't connect after ${MAX_AUTO_RETRIES} tries and has stopped retrying automatically — send /retry when you want to try again.`,
                     300000
                 )
                 return
