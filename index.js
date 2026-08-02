@@ -19,6 +19,19 @@ const server = http.createServer(app)
 
 app.use('/api', adminRouter)
 
+// A single uncaught error anywhere (Baileys internals, Telegram polling, a stray
+// promise) would otherwise kill the whole process — WhatsApp connection, admin
+// dashboard, and websocket all together. Log and stay alive instead.
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception (process kept alive):', err)
+    notifyOwnerThrottled(`⚠️ Habibi hit an uncaught error but stayed alive: ${err.message}`, 120000)
+})
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection (process kept alive):', reason)
+    notifyOwnerThrottled(`⚠️ Habibi hit an unhandled rejection but stayed alive: ${reason?.message || reason}`, 120000)
+})
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_OWNER_ID = process.env.TELEGRAM_OWNER_ID
 
