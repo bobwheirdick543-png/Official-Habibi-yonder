@@ -166,13 +166,13 @@ async function connectToWhatsApp() {
     })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
-        for (const msg of messages) {
-            try {
-                await handleIncomingMessage(sock, msg)
-            } catch (error) {
-                console.error('Error handling message:', error)
-            }
-        }
+        await Promise.all(
+            messages.map((msg) =>
+                handleIncomingMessage(sock, msg).catch((error) => {
+                    console.error('Error handling message:', error)
+                })
+            )
+        )
     })
 
     sock.ev.on('group-participants.update', async (update) => {
