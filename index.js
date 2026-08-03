@@ -14,6 +14,38 @@ import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/mess
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
 
+// Baileys calls groupMetadata() internally on every single outgoy group message
+// (to resolve the participant list for encryption) unless a cache is provided.
+// In a large, active group this floods WhatsApp with metadata queries and can
+// get rate-limited/rejected ("forbidden"), which then blocks every reply. This
+// cache is the library's own documented fix for that. Persists across
+// reconnects since it's declared at module scope, not inside connectToWhatsApp.
+const GROUP_METADATA_TTL_MS = 5 * 60 * 1000
+const groupMetadataCache = new Map()
+
+function getCachedGroupMetadata(jid) {
+    const entry = groupMetadataCache.get(jid)
+    if (!entry) return undefined
+    if (Date.now() - entry.time > GROUP_METADATA_TTL_MS) {
+        groupMetadataCache.delete(jid)
+        return undefined
+    }
+    return entry.data
+}
+
+function setCachedGroupMetadata(jid, data) {
+    groupMetadataCache.set(jid, { data, time: Date.now() })
+}
+
+async function refreshGroupMetadataCache(sockInstance, jid) {
+    try {
+        const metadata = await sockInstance.groupMetadata(jid)
+        setCachedGroupMetadata(jid, metadata)
+    } catch (err) {
+        console.error(`Failed to refresh group metadata cache for ${jid}:`, err.message)
+    }
+}
+
 const app = express()
 const server = http.createServer(app)
 
@@ -102,7 +134,8 @@ async function connectToWhatsApp() {
         emitOwnEvents: false,
         fireInitQueries: true,
         aiLabel: false,
-        getMessage: async () => ({ conversation: '' })
+        getMessage: async () => ({ conversation: '' }),
+        cachedGroupMetadata: async (jid) => getCachedGroupMetadata(jid)
     })
 
     app.set('sock', sock)
@@ -162,6 +195,16 @@ async function connectToWhatsApp() {
             reconnectAttempts = 0
             autoRetryStopped = false
             notifyOwner('Habibi connected successfully.')
+
+            // Warm the group metadata cache immediately so the very first
+            // message sent doesn't have to hit a live groupMetadata query.
+            sock.groupFetchAllParticipating()
+                .then((groups) => {
+                    for (const jid of Object.keys(groups)) {
+                        setCachedGroupMetadata(jid, groups[jid])
+                    }
+                })
+                .catch((err) => console.error('Failed to prefetch group metadata:', err.message))
         }
     })
 
@@ -180,6 +223,13 @@ async function connectToWhatsApp() {
             await handleGroupParticipantsUpdate(sock, update)
         } catch (error) {
             console.error('Error handling group participants update:', error)
+        }
+        if (update?.id) refreshGroupMetadataCache(sock, update.id)
+    })
+
+    sock.ev.on('groups.update', (updates) => {
+        for (const update of updates) {
+            if (update?.id) refreshGroupMetadataCache(sock, update.id)
         }
     })
 
