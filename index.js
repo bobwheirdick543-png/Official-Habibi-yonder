@@ -37,6 +37,20 @@ function setCachedGroupMetadata(jid, data) {
     groupMetadataCache.set(jid, { data, time: Date.now() })
 }
 
+// Entries expire lazily (on next read) via getCachedGroupMetadata, but a group
+// that goes quiet — bot removed, group archived, etc. — would otherwise sit in
+// memory forever since nothing ever reads it again to trigger the delete. This
+// sweep guarantees stale entries are actually freed, which matters once the bot
+// is in more than a couple of large groups.
+setInterval(() => {
+    const now = Date.now()
+    for (const [jid, entry] of groupMetadataCache) {
+        if (now - entry.time > GROUP_METADATA_TTL_MS) {
+            groupMetadataCache.delete(jid)
+        }
+    }
+}, GROUP_METADATA_TTL_MS)
+
 async function refreshGroupMetadataCache(sockInstance, jid) {
     try {
         const metadata = await sockInstance.groupMetadata(jid)
@@ -131,7 +145,7 @@ async function connectToWhatsApp() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }))
         },
         ...(version ? { version } : {}),
-        logger: pino({ level: 'info' }),
+        logger: pino({ level: process.env.BAILEYS_LOG_LEVEL || 'warn' }),
         browser: Browsers.macOS('Chrome'),
         printQRInTerminal: false,
         syncFullHistory: false,
