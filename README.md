@@ -171,3 +171,12 @@ No license has been set yet — all rights reserved by default until one is adde
 ## 🙌 Credits
 
 Built by **Stain**.
+
+[![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=white)](https://wa.me/2348132589873)
+[![Telegram](https://img.shields.io/badge/Telegram-@heisstain-26A5E4?logo=telegram&logoColor=white)](https://t.me/heisstain)
+[![Telegram](https://img.shields.io/badge/Telegram-@heisevanss-26A5E4?logo=telegram&logoColor=white)](https://t.me/heisevanss)
+[![Instagram](https://img.shields.io/badge/Instagram-@heis__evanss-E4405F?logo=instagram&logoColor=white)](https://www.instagram.com/heis_evanss?igsh=Z3cxYmZsYTdrOGtv)
+
+### Special thanks
+
+Ted • Milo Dev • Anthropic • Gemini
