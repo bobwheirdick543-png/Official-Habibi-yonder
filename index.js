@@ -46,6 +46,17 @@ async function refreshGroupMetadataCache(sockInstance, jid) {
     }
 }
 
+// Baileys' own docs recommend keeping this outside the socket instance so it
+// survives reconnects — otherwise every reconnect resets retry tracking to
+// zero, which can contribute to repeated decrypt/retry loops.
+const retryCounters = new Map()
+const msgRetryCounterCache = {
+    get: (key) => retryCounters.get(key),
+    set: (key, value) => retryCounters.set(key, value),
+    del: (key) => retryCounters.delete(key),
+    flushAll: () => retryCounters.clear()
+}
+
 const app = express()
 const server = http.createServer(app)
 
@@ -131,11 +142,17 @@ async function connectToWhatsApp() {
         keepAliveIntervalMs: 25000,
         retryRequestDelayMs: 500,
         maxMsgRetryCount: 5,
+        msgRetryCounterCache,
         emitOwnEvents: false,
         fireInitQueries: true,
         aiLabel: false,
         getMessage: async () => ({ conversation: '' }),
-        cachedGroupMetadata: async (jid) => getCachedGroupMetadata(jid)
+        cachedGroupMetadata: async (jid) => getCachedGroupMetadata(jid),
+        // Habibi only cares about group messages — Status broadcasts from every
+        // contact were a huge share of the CPU-heavy decrypt-failure noise for
+        // content she never uses. Skipping decryption for them entirely is a
+        // documented Baileys option, not a workaround.
+        shouldIgnoreJid: (jid) => jid === 'status@broadcast'
     })
 
     app.set('sock', sock)
