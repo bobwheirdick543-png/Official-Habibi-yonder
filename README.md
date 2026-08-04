@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/habibi-banner.svg" alt="Habibi — WhatsApp economy bot" width="100%" />
+<img src="./assets/habibi-coin-logo.svg" alt="Habibi — WhatsApp economy bot" width="320" />
 
 **A WhatsApp group bot with a full in-chat economy — currency, gambling, marriage, heists, and a merciless AI personality.**
 
