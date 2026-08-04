@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🦩 Habibi
+# 𝓗𝓪𝓫𝓲𝓫𝓲 🎀 by 𝑆.
 
 **A WhatsApp group bot with a full in-chat economy — currency, gambling, marriage, heists, and a merciless AI personality.**
 
@@ -12,7 +12,7 @@ Built to keep groups *active*, not to moderate them.
 [![AI](https://img.shields.io/badge/AI-Groq%20%2F%20Llama%203.3-F55036?logo=meta&logoColor=white)](https://console.groq.com)
 [![Status](https://img.shields.io/badge/status-active%20beta-yellow)]()
 
-[Features](#-features) • [Commands](#-commands) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Deployment](#-deployment) • [Roadmap](#-roadmap)
+[Features](#-features) • [Commands](#-commands) • [Architecture](#-architecture) • [Reliability](#-reliability--engineering) • [Getting Started](#-getting-started) • [Deployment](#-deployment) • [Roadmap](#-roadmap)
 
 </div>
 
@@ -97,6 +97,19 @@ Session credentials, economy state, and AI chat history all live in Supabase —
 | Process management | PM2 |
 | Hosting | Oracle Cloud (Ampere A1, ARM) — Railway/Render configs also included as alternatives |
 | Live updates | `ws` — broadcasts economy events for a future admin dashboard |
+
+## 🛡 Reliability & engineering
+
+Habibi is built to survive a busy, unpredictable group chat, not just demo well:
+
+| | |
+|---|---|
+| 🔄 **Self-healing connection** | Auto-reconnects on drops with exponential backoff, pings the owner on Telegram if it can't recover, and exposes a manual `/retry` — no SSH required for a normal disconnect |
+| 🧱 **Crash-proof by design** | Uncaught exceptions and unhandled rejections are caught and logged instead of killing the process — WhatsApp, the admin API, and the WebSocket feed all keep running independently of each other |
+| 🚦 **Anti-spam-aware sending** | A throttled outbound queue plus a TTL'd group-metadata cache, specifically built to keep the bot from tripping WhatsApp's spam detection in large, high-traffic groups |
+| 🪪 **LID identity resolution** | Handles WhatsApp's newer "linked identifier" addressing — a change that silently fragments accounts in a lot of bots — with a sticky resolution cache so no one ends up split across duplicate wallets |
+| 👥 **Bulk-join detection** | Recognizes mass-add events and suppresses the welcome-roast spam that would otherwise fire once per person, while still registering every new member in the economy |
+| 💾 **Stateless, portable process** | Session credentials, economy data, and chat history all live in Supabase — the bot itself holds no local state, so it can be redeployed or migrated to a new server without re-pairing WhatsApp |
 
 ## 📁 Project structure
 
