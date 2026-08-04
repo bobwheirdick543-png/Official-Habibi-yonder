@@ -177,9 +177,17 @@ Pick whichever fits your setup:
 
 This is currently a single-maintainer project. Issues and PRs are welcome — open an issue first for anything beyond a small fix so it can be discussed before you sink time into it.
 
-## 📄 License
+## 📄 License & usage
 
-No license has been set yet — all rights reserved by default until one is added.
+**© 2026 Stain. All rights reserved.**
+
+This repository is source-available for reference and personal learning — it is **not** open source. Unless you have explicit written permission from Stain, you may not:
+
+- Copy, fork, redistribute, or republish this codebase (in whole or in part)
+- Deploy or run a modified or unmodified version of it as your own bot/product
+- Strip, alter, or omit credit to Stain as the original creator
+
+If you want to build on this, use it commercially, or feature parts of it elsewhere, reach out first — see the contact links below. Unauthorized use is a copyright violation and may result in a takedown request, GitHub repository/DMCA report, or further legal action.
 
 ## 🙌 Credits
 

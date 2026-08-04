@@ -1,0 +1,36 @@
+Copyright (c) 2026 Stain
+
+All Rights Reserved.
+
+This repository and its contents (the "Software") are the original work of
+Stain. The Software is made source-available for reference and personal
+learning purposes only. It is NOT open source, and no license is granted
+under this notice to use, copy, modify, merge, publish, distribute,
+sublicense, deploy, or sell copies of the Software, in whole or in part.
+
+Without explicit prior written permission from Stain, you may NOT:
+
+  1. Copy, fork, mirror, or redistribute this codebase, in whole or in part.
+  2. Deploy, host, or run a modified or unmodified version of the Software
+     as your own bot, product, or service.
+  3. Remove, obscure, or fail to credit Stain as the original creator when
+     referencing, discussing, or building upon the Software.
+  4. Use the Software, or any derivative of it, for commercial purposes.
+
+Permitted use, absent written permission, is limited to viewing the source
+for personal reference and learning.
+
+Third-party dependencies used by this project (including but not limited to
+Baileys, Supabase client libraries, and the Groq SDK) remain governed by
+their own respective licenses; this notice applies only to the original
+code authored by Stain in this repository.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+To request permission for use beyond what is stated above, contact Stain
+directly — see the contact links in README.md.
