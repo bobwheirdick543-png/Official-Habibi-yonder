@@ -71,17 +71,17 @@ It's designed for one thing: giving a group a reason to keep talking.
 
 ```mermaid
 flowchart LR
-    WA[WhatsApp Group] <-->|Baileys| Bot[index.js]
-    Bot --> MH[messageHandler.js]
-    MH --> ECO[economy.js]
-    MH --> AI[ai.js — Groq]
-    ECO <--> DB[(Supabase / Postgres)]
+    WA["WhatsApp Group"] <-->|Baileys| Bot["index.js"]
+    Bot --> MH["messageHandler.js"]
+    MH --> ECO["economy.js"]
+    MH --> AI["ai.js (Groq)"]
+    ECO <--> DB[("Supabase / Postgres")]
     AI <--> DB
-    Bot <--> AUTH[supabaseAuthState.js]
+    Bot <--> AUTH["supabaseAuthState.js"]
     AUTH <--> DB
-    Bot --> WS[WebSocket + Admin API]
-    WS --> DASH[Admin dashboard — planned]
-    TG[Telegram] <-->|pairing control| Bot
+    Bot --> WS["WebSocket + Admin API"]
+    WS --> DASH["Admin dashboard (planned)"]
+    TG["Telegram"] <-->|pairing control| Bot
 ```
 
 Session credentials, economy state, and AI chat history all live in Supabase — the bot itself is stateless, so redeploys and server migrations don't require re-pairing WhatsApp.
