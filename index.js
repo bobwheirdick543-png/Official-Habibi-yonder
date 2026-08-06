@@ -182,6 +182,8 @@ async function connectToWhatsApp() {
         }
     }, 25000)
 
+    let groupCacheWarmPromise = Promise.resolve()
+
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
 
@@ -229,7 +231,10 @@ async function connectToWhatsApp() {
 
             // Warm the group metadata cache immediately so the very first
             // message sent doesn't have to hit a live groupMetadata query.
-            sock.groupFetchAllParticipating()
+            // Stored so messages.upsert can await it below — without that,
+            // messages arriving in the gap before this resolves would still
+            // miss the cache and trigger live queries, defeating the point.
+            groupCacheWarmPromise = sock.groupFetchAllParticipating()
                 .then((groups) => {
                     for (const jid of Object.keys(groups)) {
                         setCachedGroupMetadata(jid, groups[jid])
@@ -240,6 +245,11 @@ async function connectToWhatsApp() {
     })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
+        // Never block on this longer than a few seconds — if the prefetch is
+        // slow or fails, fall back to per-send live lookups rather than
+        // stalling every incoming message indefinitely.
+        await Promise.race([groupCacheWarmPromise, new Promise((resolve) => setTimeout(resolve, 5000))])
+
         await Promise.all(
             messages.map((msg) =>
                 handleIncomingMessage(sock, msg).catch((error) => {
