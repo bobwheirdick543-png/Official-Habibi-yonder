@@ -200,4 +200,4 @@ Built by **Stain**.
 
 ### Special thanks
 
-Ted • Milo Dev • Anthropic • Gemini
+Ted • Zed • Milo Dev
