@@ -13,6 +13,7 @@ import { useSupabaseAuthState } from './lib/supabaseAuthState.js'
 import { handleIncomingMessage, handleGroupParticipantsUpdate } from './lib/messageHandler.js'
 import { adminRouter } from './lib/adminApi.js'
 import { initWebSocket } from './lib/websocket.js'
+import { createGroupAirdrop, getActiveGroupIds, hasUnclaimedAirdrop } from './lib/economy.js'
 
 // Baileys calls groupMetadata() internally on every single outgoy group message
 // (to resolve the participant list for encryption) unless a cache is provided.
@@ -69,6 +70,44 @@ const msgRetryCounterCache = {
     set: (key, value) => retryCounters.set(key, value),
     del: (key) => retryCounters.delete(key),
     flushAll: () => retryCounters.clear()
+}
+
+// Auto-airdrops — one drop per active group on a fixed interval, skipped for
+// any group that still has an unclaimed one sitting there (no point stacking
+// drops nobody's grabbed yet). Started once on the first successful
+// connection, not on every reconnect, so restarts don't stack intervals.
+const AUTO_AIRDROP_INTERVAL_MS = 4 * 60 * 60 * 1000 // every 4 hours — tune as needed
+let autoAirdropStarted = false
+
+function formatHabz(amount) {
+    return `₻${Number(amount || 0).toLocaleString()}`
+}
+
+async function runAutoAirdrops() {
+    try {
+        const groupIds = await getActiveGroupIds()
+        for (const groupId of groupIds) {
+            if (!sock) continue
+            const alreadyPending = await hasUnclaimedAirdrop(groupId)
+            if (alreadyPending) continue
+
+            const result = await createGroupAirdrop(groupId)
+            if (result.error) continue
+
+            await sock.sendPresenceUpdate('composing', groupId)
+            await sock.sendMessage(groupId, {
+                text: `🪂 *AIRDROP INCOMING* 🪂\n\n${formatHabz(result.amount)} is up for grabs. First to type \`.claim\` takes it all.`
+            })
+        }
+    } catch (err) {
+        console.error('Auto-airdrop run failed:', err.message)
+    }
+}
+
+function startAutoAirdropScheduler() {
+    if (autoAirdropStarted) return
+    autoAirdropStarted = true
+    setInterval(runAutoAirdrops, AUTO_AIRDROP_INTERVAL_MS)
 }
 
 const app = express()
@@ -228,6 +267,7 @@ async function connectToWhatsApp() {
             reconnectAttempts = 0
             autoRetryStopped = false
             notifyOwner('Habibi connected successfully.')
+            startAutoAirdropScheduler()
 
             // Warm the group metadata cache immediately so the very first
             // message sent doesn't have to hit a live groupMetadata query.
