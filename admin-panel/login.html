@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Habibi — Sign in</title>
+<meta name="theme-color" content="#06070b" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="atmosphere" aria-hidden="true">
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="orb orb-c"></div>
+  <div class="grain"></div>
+</div>
+
+<!-- ============ LOGIN GATE ============ -->
+<main id="gate" class="gate">
+  <div class="gate-card glass">
+    <div class="gate-mark">
+      <span class="mark-glyph">ﮪ</span>
+    </div>
+    <h1>Habibi Control</h1>
+    <p class="gate-sub">Connect to your bot's server to sign in.</p>
+
+    <form id="gate-form" class="gate-form" autocomplete="off">
+      <label class="field">
+        <span>Server URL</span>
+        <input id="input-url" type="text" inputmode="url" placeholder="https://your-vps-domain.com" required />
+      </label>
+      <label class="field">
+        <span>Admin secret</span>
+        <input id="input-secret" type="password" placeholder="••••••••••••" required />
+      </label>
+      <button type="submit" class="btn-primary" id="gate-submit">
+        <span class="btn-label">Connect</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+      <p class="gate-error" id="gate-error" hidden></p>
+    </form>
+  </div>
+</main>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="shared.js"></script>
+<script src="login.js"></script>
+</body>
+</html>
