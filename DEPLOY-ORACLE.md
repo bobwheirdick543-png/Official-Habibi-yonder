@@ -77,7 +77,8 @@ SUPABASE_SERVICE_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_OWNER_ID=
 GROQ_API_KEY=
-ADMIN_SECRET=Habibi*2026
+ADMIN_SECRET=choose-a-long-random-value-here
+ALLOWED_ORIGIN=https://your-panel.vercel.app
 PORT=3000
 ```
 Save with `Ctrl+O`, `Enter`, then exit with `Ctrl+X`.
@@ -119,10 +120,13 @@ npm install
 pm2 restart habibi
 ```
 
-## Phase 6: Firewall (not needed yet — only when the admin panel is built)
+## Phase 6: Firewall + HTTPS (needed now that the admin panel exists)
 
-The bot itself is all outbound (WhatsApp, Telegram) — no inbound port needed to work. Skip this until the admin panel needs to reach this server.
+See `admin-panel/README.md` for the full walkthrough (Caddy for free HTTPS,
+opening the port, and deploying the panel itself to Vercel). Short version:
 
-When that day comes, two layers both need opening for port 3000:
-1. Oracle Console → your instance → **Subnet** → **Security Lists** → **Add Ingress Rule** → allow TCP 3000
-2. On the VM itself: `sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT` then `sudo netfilter-persistent save` (or `sudo ufw allow 3000` if ufw is active instead)
+1. Point a domain at this VM's public IP, put Caddy in front of port 3000 for
+   automatic HTTPS.
+2. Oracle Console → your instance → **Subnet** → **Security Lists** → **Add Ingress Rule** → allow TCP 443 (or 3000 if skipping Caddy).
+3. On the VM: `sudo ufw allow 443` (or `sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT` then `sudo netfilter-persistent save`).
+4. Set `ADMIN_SECRET` (rotated, not the placeholder above) and `ALLOWED_ORIGIN` in `.env`, then `pm2 restart habibi`.

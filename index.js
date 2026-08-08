@@ -113,6 +113,8 @@ function startAutoAirdropScheduler() {
 const app = express()
 const server = http.createServer(app)
 
+app.set('startTime', Date.now())
+app.set('connectionState', 'connecting')
 app.use('/api', adminRouter)
 
 // A single uncaught error anywhere (Baileys internals, Telegram polling, a stray
@@ -230,6 +232,8 @@ async function connectToWhatsApp() {
             isReadyForPairing = true
             notifyOwner('Habibi is ready to pair. Send /pair <phone number> (country code, no +).')
         }
+
+        if (connection) app.set('connectionState', connection)
 
         if (connection === 'close') {
             const shouldReconnect =
