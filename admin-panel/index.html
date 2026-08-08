@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Habibi — Control</title>
+<meta name="theme-color" content="#06070b" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="atmosphere" aria-hidden="true">
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="orb orb-c"></div>
+  <div class="grain"></div>
+</div>
+
+<!-- ============ LOGIN GATE ============ -->
+<main id="gate" class="gate">
+  <div class="gate-card glass">
+    <div class="gate-mark">
+      <span class="mark-glyph">ﮪ</span>
+    </div>
+    <h1>Habibi Control</h1>
+    <p class="gate-sub">Connect to your bot's server to sign in.</p>
+
+    <form id="gate-form" class="gate-form" autocomplete="off">
+      <label class="field">
+        <span>Server URL</span>
+        <input id="input-url" type="text" inputmode="url" placeholder="https://your-vps-domain.com" required />
+      </label>
+      <label class="field">
+        <span>Admin secret</span>
+        <input id="input-secret" type="password" placeholder="••••••••••••" required />
+      </label>
+      <button type="submit" class="btn-primary" id="gate-submit">
+        <span class="btn-label">Connect</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+      <p class="gate-error" id="gate-error" hidden></p>
+    </form>
+  </div>
+</main>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app" class="app" hidden>
+
+  <!-- Floating glass rail -->
+  <nav class="rail glass">
+    <div class="rail-mark"><span class="mark-glyph">ﮪ</span></div>
+    <button class="rail-btn active" data-section="overview" aria-label="Overview">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
+      <span>Overview</span>
+    </button>
+    <button class="rail-btn" data-section="users" aria-label="Users">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <span>Users</span>
+    </button>
+    <button class="rail-btn" data-section="groups" aria-label="Groups">
+      <svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3.2"/><circle cx="17" cy="9" r="3.2"/><path d="M2 21c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4M12 21c0-3.6 2.7-6.4 6-6.4s6 2.8 6 6.4"/></svg>
+      <span>Groups</span>
+    </button>
+    <button class="rail-btn" data-section="shop" aria-label="Shop">
+      <svg viewBox="0 0 24 24"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8Z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></svg>
+      <span>Shop</span>
+    </button>
+    <button class="rail-btn" data-section="moderators" aria-label="Moderators">
+      <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.6-3 8.4-7 9-4-.6-7-4.4-7-9V6l7-3Z"/></svg>
+      <span>Mods</span>
+    </button>
+    <button class="rail-btn" data-section="settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.8-1l-.3-2.4h-4l-.3 2.4a7.6 7.6 0 0 0-1.8 1l-2.3-.9-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.7 1.8 1l.3 2.4h4l.3-2.4c.7-.3 1.3-.6 1.8-1l2.3.9 2-3.4-2-1.5Z"/></svg>
+      <span>Settings</span>
+    </button>
+    <button class="rail-btn rail-signout" id="btn-signout" aria-label="Sign out">
+      <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      <span>Sign out</span>
+    </button>
+  </nav>
+
+  <div class="main">
+    <!-- Top bar -->
+    <header class="topbar glass">
+      <div class="pulse-orb" id="conn-orb" title="Connection status"></div>
+      <div class="topbar-info">
+        <div class="topbar-name" id="bot-name">Habibi</div>
+        <div class="topbar-state" id="conn-label">connecting…</div>
+      </div>
+      <div class="topbar-spacer"></div>
+      <div class="uptime" id="uptime">—</div>
+    </header>
+
+    <!-- Signature element: live ticker -->
+    <div class="ticker glass" id="ticker">
+      <div class="ticker-track" id="ticker-track">
+        <span class="ticker-item ticker-empty">Waiting for activity…</span>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <section class="view active" id="view-overview">
+      <div class="bento">
+        <div class="card glass stat-card">
+          <span class="stat-label">Players</span>
+          <span class="stat-value" id="stat-users">—</span>
+        </div>
+        <div class="card glass stat-card">
+          <span class="stat-label">Groups</span>
+          <span class="stat-value" id="stat-groups">—</span>
+        </div>
+        <div class="card glass stat-card accent-gold">
+          <span class="stat-label">Habz in circulation</span>
+          <span class="stat-value" id="stat-habz">—</span>
+        </div>
+        <div class="card glass stat-card">
+          <span class="stat-label">24h volume</span>
+          <span class="stat-value" id="stat-volume">—</span>
+        </div>
+      </div>
+
+      <div class="panel glass">
+        <div class="panel-head">
+          <h2>Leaderboard</h2>
+        </div>
+        <div class="table-wrap" id="leaderboard-list">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-users">
+      <div class="panel glass">
+        <div class="panel-head">
+          <h2>Users</h2>
+          <input type="text" id="user-search" class="search-input" placeholder="Search by name or ID" />
+        </div>
+        <div class="table-wrap" id="user-list"><div class="empty-state">Search for a player, or leave blank to see the top balances.</div></div>
+      </div>
+      <div class="panel glass" id="user-detail-panel" hidden>
+        <div class="panel-head">
+          <h2 id="user-detail-name">—</h2>
+          <button class="btn-ghost" id="user-detail-close">Close</button>
+        </div>
+        <div id="user-detail-body"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-groups">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Groups</h2></div>
+        <div class="table-wrap" id="group-list"><div class="empty-state">Loading…</div></div>
+      </div>
+      <div class="panel glass">
+        <div class="panel-head"><h2>Broadcast</h2></div>
+        <form id="broadcast-form" class="stack-form">
+          <label class="field">
+            <span>Group</span>
+            <select id="broadcast-group"></select>
+          </label>
+          <div class="row-2">
+            <label class="field">
+              <span>Message</span>
+              <input type="text" id="broadcast-text" placeholder="Text to send" />
+            </label>
+            <label class="field field-narrow">
+              <span>Airdrop amount</span>
+              <input type="number" id="broadcast-amount" placeholder="habz" min="1" />
+            </label>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn-secondary" id="btn-send-message">Send message</button>
+            <button type="button" class="btn-primary" id="btn-send-airdrop">Drop airdrop</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="view" id="view-shop">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Vehicles</h2></div>
+        <div class="table-wrap" id="shop-vehicles"><div class="empty-state">Loading…</div></div>
+      </div>
+      <div class="panel glass">
+        <div class="panel-head"><h2>Houses</h2></div>
+        <div class="table-wrap" id="shop-houses"><div class="empty-state">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-moderators">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Moderators</h2></div>
+        <form id="mod-form" class="row-actions">
+          <input type="text" id="mod-input" class="search-input" placeholder="Member ID (phone number)" />
+          <button type="submit" class="btn-primary">Add moderator</button>
+        </form>
+        <div class="table-wrap" id="mod-list"><div class="empty-state">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Bot settings</h2></div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">AI personality replies</div>
+            <div class="setting-sub">When off, Habibi skips her conversational .ai replies bot-wide.</div>
+          </div>
+          <button class="toggle" id="toggle-ai" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
+        </div>
+      </div>
+      <div class="panel glass">
+        <div class="panel-head"><h2>Connection</h2></div>
+        <div class="table-wrap">
+          <div class="kv-row"><span>Server</span><span id="settings-server-url">—</span></div>
+          <div class="kv-row"><span>Bot number</span><span id="settings-bot-number">—</span></div>
+          <div class="kv-row"><span>State</span><span id="settings-state">—</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

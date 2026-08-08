@@ -1,1 +1,609 @@
+// ============================================================
+// Habibi Control — app logic
+// No build step, no framework: talks directly to the bot's /api
+// routes over fetch(), plus /ws for the live ticker.
+// ============================================================
 
+const STORAGE_KEY = 'habibi-panel-session'
+
+let session = null // { url, secret }
+let ws = null
+let statusPollTimer = null
+
+// ---------- storage ----------
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveSession(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+}
+
+function clearSession() {
+  localStorage.removeItem(STORAGE_KEY)
+}
+
+// ---------- API client ----------
+
+function apiUrl(path) {
+  return session.url.replace(/\/+$/, '') + '/api' + path
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(apiUrl(path), {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-secret': session.secret,
+      ...(options.headers || {})
+    }
+  })
+
+  if (res.status === 401) {
+    signOut()
+    throw new Error('Session expired — sign in again.')
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+  return data
+}
+
+const get = (path) => api(path)
+const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body || {}) })
+const put = (path, body) => api(path, { method: 'PUT', body: JSON.stringify(body || {}) })
+const del = (path) => api(path, { method: 'DELETE' })
+
+// ---------- toasts ----------
+
+function toast(message, kind = 'ok') {
+  const stack = document.getElementById('toast-stack')
+  const el = document.createElement('div')
+  el.className = `toast ${kind}`
+  el.textContent = message
+  stack.appendChild(el)
+  setTimeout(() => el.remove(), 4200)
+}
+
+// ---------- formatting ----------
+
+function fmtHabz(n) {
+  const num = Number(n || 0)
+  if (Math.abs(num) >= 1_000_000) return (num / 1_000_000).toFixed(2).replace(/\.00$/, '') + 'M'
+  if (Math.abs(num) >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return num.toLocaleString()
+}
+
+function fmtUptime(seconds) {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m up`
+  return `${m}m up`
+}
+
+function timeAgo(iso) {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+// ============================================================
+// Auth gate
+// ============================================================
+
+const gateForm = document.getElementById('gate-form')
+const gateError = document.getElementById('gate-error')
+const gateSubmit = document.getElementById('gate-submit')
+
+gateForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  gateError.hidden = true
+  const url = document.getElementById('input-url').value.trim()
+  const secret = document.getElementById('input-secret').value.trim()
+  if (!url || !secret) return
+
+  setGateLoading(true)
+  session = { url, secret }
+  try {
+    await api('/ping')
+    saveSession(session)
+    enterApp()
+  } catch (err) {
+    session = null
+    gateError.textContent = err.message.includes('fetch')
+      ? "Couldn't reach that server. Check the URL and that it's running."
+      : err.message
+    gateError.hidden = false
+  } finally {
+    setGateLoading(false)
+  }
+})
+
+function setGateLoading(loading) {
+  gateSubmit.disabled = loading
+  gateSubmit.querySelector('.btn-label').style.opacity = loading ? 0.5 : 1
+  gateSubmit.querySelector('.btn-spinner').hidden = !loading
+}
+
+function signOut() {
+  clearSession()
+  session = null
+  if (ws) ws.close()
+  if (statusPollTimer) clearInterval(statusPollTimer)
+  document.getElementById('app').hidden = true
+  document.getElementById('gate').hidden = false
+}
+
+document.getElementById('btn-signout').addEventListener('click', signOut)
+
+// ============================================================
+// App entry
+// ============================================================
+
+function enterApp() {
+  document.getElementById('gate').hidden = true
+  document.getElementById('app').hidden = false
+  document.getElementById('settings-server-url').textContent = session.url
+
+  connectWebSocket()
+  pollStatus()
+  statusPollTimer = setInterval(pollStatus, 15000)
+
+  loadOverview()
+}
+
+// ---------- nav ----------
+
+document.querySelectorAll('.rail-btn[data-section]').forEach((btn) => {
+  btn.addEventListener('click', () => switchSection(btn.dataset.section))
+})
+
+function switchSection(name) {
+  document.querySelectorAll('.rail-btn[data-section]').forEach((b) => b.classList.toggle('active', b.dataset.section === name))
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`))
+
+  if (name === 'overview') loadOverview()
+  if (name === 'users') loadUsers()
+  if (name === 'groups') loadGroups()
+  if (name === 'shop') loadShop()
+  if (name === 'moderators') loadModerators()
+  if (name === 'settings') loadSettings()
+}
+
+// ============================================================
+// Status / connection
+// ============================================================
+
+async function pollStatus() {
+  try {
+    const s = await get('/status')
+    const orb = document.getElementById('conn-orb')
+    const label = document.getElementById('conn-label')
+    orb.className = 'pulse-orb ' + (s.connected ? 'online' : s.connectionState === 'close' ? 'offline' : 'pending')
+    label.textContent = s.connected ? 'connected' : s.connectionState
+    document.getElementById('bot-name').textContent = s.botName || 'Habibi'
+    document.getElementById('uptime').textContent = fmtUptime(s.uptimeSeconds)
+    document.getElementById('settings-bot-number').textContent = s.botNumber || '—'
+    document.getElementById('settings-state').textContent = s.connectionState
+  } catch {
+    document.getElementById('conn-orb').className = 'pulse-orb offline'
+    document.getElementById('conn-label').textContent = 'unreachable'
+  }
+}
+
+// ============================================================
+// Live ticker (websocket + REST fallback)
+// ============================================================
+
+function connectWebSocket() {
+  try {
+    const wsUrl = session.url.replace(/^http/, 'ws').replace(/\/+$/, '') + `/ws?secret=${encodeURIComponent(session.secret)}`
+    ws = new WebSocket(wsUrl)
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        handleLiveEvent(msg)
+      } catch { /* ignore malformed frames */ }
+    }
+    ws.onclose = () => { setTimeout(connectWebSocket, 5000) }
+  } catch {
+    setTimeout(connectWebSocket, 5000)
+  }
+}
+
+const tickerItems = []
+
+function handleLiveEvent(msg) {
+  if (msg.type === 'connected') return
+
+  const labelMap = {
+    airdrop_sent: (p) => `🦩 airdrop ${fmtHabz(p.amount)} habz dropped`,
+    balance_adjusted: (p) => `⚙️ balance adjusted → ${p.memberId}`,
+    user_killed: (p) => `💀 ${p.memberId} killed`,
+    user_revived: (p) => `❤️ ${p.memberId} revived`,
+    shop_updated: (p) => `🛒 shop price updated`,
+    settings_updated: (p) => `🔧 settings changed`,
+    message_sent: (p) => `📣 broadcast sent`
+  }
+
+  const render = labelMap[msg.type]
+  if (!render) return
+
+  pushTickerItem(render(msg.payload || {}))
+  if (document.querySelectorAll('.view.active')[0]?.id === 'view-overview') loadOverview(true)
+}
+
+function pushTickerItem(text) {
+  tickerItems.unshift(text)
+  if (tickerItems.length > 24) tickerItems.pop()
+  renderTicker()
+}
+
+function renderTicker() {
+  const track = document.getElementById('ticker-track')
+  if (!tickerItems.length) {
+    track.innerHTML = '<span class="ticker-item ticker-empty">Waiting for activity…</span>'
+    return
+  }
+  // Duplicate the list so the CSS marquee (-50%) loops seamlessly.
+  const html = tickerItems.map((t) => `<span class="ticker-item"><span class="ticker-dot"></span>${escapeHtml(t)}</span>`).join('')
+  track.innerHTML = html + html
+}
+
+async function loadRecentTransactionsIntoTicker() {
+  try {
+    const { transactions } = await get('/transactions/recent?limit=20')
+    tickerItems.length = 0
+    for (const tx of transactions) {
+      const sign = tx.receiver_id ? '' : '-'
+      tickerItems.push(`${tx.tx_type} · ${sign}${fmtHabz(tx.amount)} habz`)
+    }
+    renderTicker()
+  } catch { /* leave placeholder */ }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+// ============================================================
+// Overview
+// ============================================================
+
+async function loadOverview(quiet) {
+  if (!quiet) {
+    document.getElementById('leaderboard-list').innerHTML = '<div class="empty-state">Loading…</div>'
+  }
+  try {
+    const [stats, board] = await Promise.all([get('/stats'), get('/leaderboard/global')])
+    document.getElementById('stat-users').textContent = stats.totalUsers.toLocaleString()
+    document.getElementById('stat-groups').textContent = stats.totalGroups.toLocaleString()
+    document.getElementById('stat-habz').textContent = fmtHabz(stats.totalHabz)
+    document.getElementById('stat-volume').textContent = fmtHabz(stats.volume24h)
+
+    const list = document.getElementById('leaderboard-list')
+    list.innerHTML = board.leaderboard.length
+      ? board.leaderboard.map((u, i) => `
+        <div class="row">
+          <span class="row-rank">${i + 1}</span>
+          <div class="row-main">
+            <div class="row-name">${escapeHtml(u.push_name || u.member_id)}</div>
+            <div class="row-sub">${escapeHtml(u.member_id)}</div>
+          </div>
+          <span class="row-value">${fmtHabz(u.balance)}</span>
+        </div>`).join('')
+      : '<div class="empty-state">No players yet.</div>'
+  } catch (err) {
+    if (!quiet) toast(err.message, 'err')
+  }
+  if (!tickerItems.length) loadRecentTransactionsIntoTicker()
+}
+
+// ============================================================
+// Users
+// ============================================================
+
+let userSearchDebounce = null
+document.getElementById('user-search').addEventListener('input', (e) => {
+  clearTimeout(userSearchDebounce)
+  userSearchDebounce = setTimeout(() => loadUsers(e.target.value.trim()), 300)
+})
+
+async function loadUsers(q = '') {
+  const list = document.getElementById('user-list')
+  list.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { users } = await get(`/users${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+    list.innerHTML = users.length
+      ? users.map((u) => `
+        <div class="row clickable" data-id="${escapeHtml(u.member_id)}">
+          <div class="row-main">
+            <div class="row-name">${escapeHtml(u.push_name || u.member_id)} ${u.killed_until && new Date(u.killed_until) > new Date() ? '<span class="badge dead">dead</span>' : ''}</div>
+            <div class="row-sub">${escapeHtml(u.member_id)} · lvl ${u.level ?? 0}</div>
+          </div>
+          <span class="row-value">${fmtHabz(u.balance)}</span>
+        </div>`).join('')
+      : '<div class="empty-state">No matches.</div>'
+
+    list.querySelectorAll('.row.clickable').forEach((row) => {
+      row.addEventListener('click', () => openUserDetail(row.dataset.id))
+    })
+  } catch (err) {
+    toast(err.message, 'err')
+  }
+}
+
+document.getElementById('user-detail-close').addEventListener('click', () => {
+  document.getElementById('user-detail-panel').hidden = true
+})
+
+async function openUserDetail(memberId) {
+  const panel = document.getElementById('user-detail-panel')
+  const body = document.getElementById('user-detail-body')
+  panel.hidden = false
+  document.getElementById('user-detail-name').textContent = memberId
+  body.innerHTML = '<div class="empty-state">Loading…</div>'
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+
+  try {
+    const { profile, inventory } = await get(`/user/${encodeURIComponent(memberId)}`)
+    const isDead = profile.killed_until && new Date(profile.killed_until) > new Date()
+
+    body.innerHTML = `
+      <div class="kv-row"><span>Name</span><span>${escapeHtml(profile.push_name || '—')}</span></div>
+      <div class="kv-row"><span>Balance</span><span>${fmtHabz(profile.balance)} habz</span></div>
+      <div class="kv-row"><span>Level</span><span>${profile.level ?? 0}</span></div>
+      <div class="kv-row"><span>Vehicle</span><span>${inventory.vehicle ? inventory.vehicle.name : '—'}</span></div>
+      <div class="kv-row"><span>House</span><span>${inventory.house ? inventory.house.name : '—'}</span></div>
+      <div class="kv-row"><span>Status</span><span>${isDead ? 'dead' : 'alive'}</span></div>
+
+      <div class="row-actions" style="margin-top:14px;">
+        <div class="price-edit">
+          <input type="number" id="adjust-amount" placeholder="± amount" />
+          <button class="btn-secondary" id="btn-adjust">Adjust balance</button>
+        </div>
+      </div>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn-secondary" id="btn-reset-steals">Reset steal cooldown</button>
+        ${isDead
+          ? '<button class="btn-secondary" id="btn-revive">Revive</button>'
+          : '<button class="btn-danger" id="btn-kill">Kill</button>'}
+      </div>
+    `
+
+    body.querySelector('#btn-adjust').addEventListener('click', async () => {
+      const amount = Number(document.getElementById('adjust-amount').value)
+      if (!amount) return toast('Enter a non-zero amount', 'err')
+      try {
+        await post('/adjust-balance', { memberId, amount, reason: 'Admin panel adjustment' })
+        toast(`Balance adjusted by ${amount > 0 ? '+' : ''}${amount}`)
+        openUserDetail(memberId)
+        loadUsers(document.getElementById('user-search').value.trim())
+      } catch (err) { toast(err.message, 'err') }
+    })
+
+    body.querySelector('#btn-reset-steals').addEventListener('click', async () => {
+      try {
+        await post('/reset-steals', { memberId })
+        toast('Steal cooldown reset')
+      } catch (err) { toast(err.message, 'err') }
+    })
+
+    const killBtn = body.querySelector('#btn-kill')
+    if (killBtn) killBtn.addEventListener('click', async () => {
+      if (!confirm(`Kill ${memberId}? This wipes their balance, vehicle, and house.`)) return
+      try {
+        await post(`/user/${encodeURIComponent(memberId)}/kill`, { hours: 1 })
+        toast(`${memberId} killed`)
+        openUserDetail(memberId)
+      } catch (err) { toast(err.message, 'err') }
+    })
+
+    const reviveBtn = body.querySelector('#btn-revive')
+    if (reviveBtn) reviveBtn.addEventListener('click', async () => {
+      try {
+        await post(`/user/${encodeURIComponent(memberId)}/revive`)
+        toast(`${memberId} revived`)
+        openUserDetail(memberId)
+      } catch (err) { toast(err.message, 'err') }
+    })
+  } catch (err) {
+    body.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`
+  }
+}
+
+// ============================================================
+// Groups / broadcast
+// ============================================================
+
+async function loadGroups() {
+  const list = document.getElementById('group-list')
+  const select = document.getElementById('broadcast-group')
+  list.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { groups } = await get('/groups')
+    list.innerHTML = groups.length
+      ? groups.map((g) => `
+        <div class="row">
+          <div class="row-main">
+            <div class="row-name">${escapeHtml(g.group_name || g.group_id)}</div>
+            <div class="row-sub">${escapeHtml(g.group_id)}</div>
+          </div>
+          <span class="row-value" style="color:var(--text-lo)">${g.memberCount} members</span>
+        </div>`).join('')
+      : '<div class="empty-state">No groups registered yet.</div>'
+
+    select.innerHTML = groups.map((g) => `<option value="${escapeHtml(g.group_id)}">${escapeHtml(g.group_name || g.group_id)}</option>`).join('')
+  } catch (err) {
+    toast(err.message, 'err')
+  }
+}
+
+document.getElementById('btn-send-message').addEventListener('click', async () => {
+  const groupId = document.getElementById('broadcast-group').value
+  const text = document.getElementById('broadcast-text').value.trim()
+  if (!groupId || !text) return toast('Pick a group and enter a message', 'err')
+  try {
+    await post('/broadcast/message', { groupId, text })
+    toast('Message sent')
+    document.getElementById('broadcast-text').value = ''
+  } catch (err) { toast(err.message, 'err') }
+})
+
+document.getElementById('btn-send-airdrop').addEventListener('click', async () => {
+  const groupId = document.getElementById('broadcast-group').value
+  const amount = Number(document.getElementById('broadcast-amount').value)
+  if (!groupId || !amount || amount <= 0) return toast('Pick a group and a positive amount', 'err')
+  try {
+    await post('/broadcast/airdrop', { groupId, amount })
+    toast(`Airdrop of ${fmtHabz(amount)} habz sent`)
+    document.getElementById('broadcast-amount').value = ''
+  } catch (err) { toast(err.message, 'err') }
+})
+
+// ============================================================
+// Shop
+// ============================================================
+
+async function loadShop() {
+  const vBox = document.getElementById('shop-vehicles')
+  const hBox = document.getElementById('shop-houses')
+  vBox.innerHTML = hBox.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { vehicles, houses } = await get('/shop')
+    vBox.innerHTML = vehicles.map((v) => shopRow(v, 'vehicle')).join('')
+    hBox.innerHTML = houses.map((h) => shopRow(h, 'house')).join('')
+    wireShopSaves(vBox, 'vehicle')
+    wireShopSaves(hBox, 'house')
+  } catch (err) {
+    toast(err.message, 'err')
+  }
+}
+
+function shopRow(item, kind) {
+  return `
+    <div class="row" data-grade="${item.grade}">
+      <div class="row-main">
+        <div class="row-name">${item.emoji || ''} ${escapeHtml(item.name)}</div>
+        <div class="row-sub">grade ${item.grade}${kind === 'vehicle' ? ` · crew ${item.crew_size}` : ` · +${fmtHabz(item.hourly_rate)}/hr`}</div>
+      </div>
+      <div class="price-edit">
+        <input type="number" class="price-input" value="${item.price}" />
+        <button class="btn-secondary btn-save-price">Save</button>
+      </div>
+    </div>`
+}
+
+function wireShopSaves(container, kind) {
+  container.querySelectorAll('.row').forEach((row) => {
+    const grade = row.dataset.grade
+    row.querySelector('.btn-save-price').addEventListener('click', async () => {
+      const price = Number(row.querySelector('.price-input').value)
+      if (!price || price <= 0) return toast('Enter a valid price', 'err')
+      try {
+        await put(`/shop/${kind}/${grade}`, { price })
+        toast(`${kind === 'vehicle' ? 'Vehicle' : 'House'} grade ${grade} updated`)
+      } catch (err) { toast(err.message, 'err') }
+    })
+  })
+}
+
+// ============================================================
+// Moderators
+// ============================================================
+
+async function loadModerators() {
+  const list = document.getElementById('mod-list')
+  list.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { moderators } = await get('/moderators')
+    list.innerHTML = moderators.length
+      ? moderators.map((m) => `
+        <div class="row">
+          <div class="row-main">
+            <div class="row-name">${escapeHtml(m.member_id)}</div>
+            <div class="row-sub">added ${timeAgo(m.added_at)}</div>
+          </div>
+          <button class="btn-ghost btn-remove-mod" data-id="${escapeHtml(m.member_id)}">Remove</button>
+        </div>`).join('')
+      : '<div class="empty-state">No moderators yet.</div>'
+
+    list.querySelectorAll('.btn-remove-mod').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await del(`/moderators/${encodeURIComponent(btn.dataset.id)}`)
+          toast('Moderator removed')
+          loadModerators()
+        } catch (err) { toast(err.message, 'err') }
+      })
+    })
+  } catch (err) {
+    toast(err.message, 'err')
+  }
+}
+
+document.getElementById('mod-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const input = document.getElementById('mod-input')
+  const memberId = input.value.trim()
+  if (!memberId) return
+  try {
+    await post('/moderators', { memberId })
+    toast('Moderator added')
+    input.value = ''
+    loadModerators()
+  } catch (err) { toast(err.message, 'err') }
+})
+
+// ============================================================
+// Settings
+// ============================================================
+
+async function loadSettings() {
+  try {
+    const { aiEnabled } = await get('/settings')
+    const toggle = document.getElementById('toggle-ai')
+    toggle.setAttribute('aria-checked', String(aiEnabled))
+  } catch (err) {
+    toast(err.message, 'err')
+  }
+}
+
+document.getElementById('toggle-ai').addEventListener('click', async (e) => {
+  const toggle = e.currentTarget
+  const next = toggle.getAttribute('aria-checked') !== 'true'
+  toggle.setAttribute('aria-checked', String(next))
+  try {
+    await post('/settings', { aiEnabled: next })
+    toast(`AI replies turned ${next ? 'on' : 'off'}`)
+  } catch (err) {
+    toggle.setAttribute('aria-checked', String(!next))
+    toast(err.message, 'err')
+  }
+})
+
+// ============================================================
+// Boot
+// ============================================================
+
+;(function boot() {
+  const saved = loadSession()
+  if (saved) {
+    session = saved
+    document.getElementById('input-url').value = saved.url
+    api('/ping')
+      .then(enterApp)
+      .catch(() => { session = null; clearSession() })
+  }
+})()
