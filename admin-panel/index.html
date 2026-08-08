@@ -68,6 +68,14 @@
       <svg viewBox="0 0 24 24"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8Z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></svg>
       <span>Shop</span>
     </button>
+    <button class="rail-btn" data-section="vaults" aria-label="Vaults">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M6 4v2M18 4v2"/></svg>
+      <span>Vaults</span>
+    </button>
+    <button class="rail-btn" data-section="dead" aria-label="Dead">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l2 2M13 9l-2 2M9 15l2-2M13 15l-2-2"/></svg>
+      <span>Dead</span>
+    </button>
     <button class="rail-btn" data-section="moderators" aria-label="Moderators">
       <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.6-3 8.4-7 9-4-.6-7-4.4-7-9V6l7-3Z"/></svg>
       <span>Mods</span>
@@ -181,12 +189,30 @@
 
     <section class="view" id="view-shop">
       <div class="panel glass">
+        <div class="panel-head"><h2>Weapons</h2></div>
+        <div class="table-wrap" id="shop-weapons"><div class="empty-state">Loading…</div></div>
+      </div>
+      <div class="panel glass">
         <div class="panel-head"><h2>Vehicles</h2></div>
         <div class="table-wrap" id="shop-vehicles"><div class="empty-state">Loading…</div></div>
       </div>
       <div class="panel glass">
         <div class="panel-head"><h2>Houses</h2></div>
         <div class="table-wrap" id="shop-houses"><div class="empty-state">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-vaults">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Marriage vaults</h2></div>
+        <div class="table-wrap" id="vault-list"><div class="empty-state">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-dead">
+      <div class="panel glass">
+        <div class="panel-head"><h2>Currently dead</h2></div>
+        <div class="table-wrap" id="dead-list"><div class="empty-state">Loading…</div></div>
       </div>
     </section>
 

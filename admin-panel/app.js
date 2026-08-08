@@ -98,6 +98,17 @@ function timeAgo(iso) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+function timeUntil(iso) {
+  if (!iso) return ''
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'any moment'
+  const mins = Math.ceil(diff / 60000)
+  if (mins < 60) return `in ${mins}m`
+  const hrs = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return `in ${hrs}h ${remMins}m`
+}
+
 // ============================================================
 // Auth gate
 // ============================================================
@@ -155,6 +166,7 @@ function enterApp() {
   document.getElementById('gate').hidden = true
   document.getElementById('app').hidden = false
   document.getElementById('settings-server-url').textContent = session.url
+  window.scrollTo(0, 0)
 
   connectWebSocket()
   pollStatus()
@@ -177,6 +189,8 @@ function switchSection(name) {
   if (name === 'users') loadUsers()
   if (name === 'groups') loadGroups()
   if (name === 'shop') loadShop()
+  if (name === 'vaults') loadVaults()
+  if (name === 'dead') loadDead()
   if (name === 'moderators') loadModerators()
   if (name === 'settings') loadSettings()
 }
@@ -477,11 +491,21 @@ document.getElementById('btn-send-airdrop').addEventListener('click', async () =
 // ============================================================
 
 async function loadShop() {
+  const wBox = document.getElementById('shop-weapons')
   const vBox = document.getElementById('shop-vehicles')
   const hBox = document.getElementById('shop-houses')
-  vBox.innerHTML = hBox.innerHTML = '<div class="empty-state">Loading…</div>'
+  wBox.innerHTML = vBox.innerHTML = hBox.innerHTML = '<div class="empty-state">Loading…</div>'
   try {
-    const { vehicles, houses } = await get('/shop')
+    const { weapons, vehicles, houses } = await get('/shop')
+    // Weapon prices are fixed in code, not the database — shown read-only.
+    wBox.innerHTML = weapons.map((w) => `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-name">${w.emoji || ''} ${escapeHtml(w.name)}</div>
+          <div class="row-sub">grade ${w.grade} · +${Math.round(w.bonus * 100)}% rob/steal odds</div>
+        </div>
+        <div class="price-edit"><span>${fmtHabz(w.price)} habz</span></div>
+      </div>`).join('') || '<div class="empty-state">No weapons configured.</div>'
     vBox.innerHTML = vehicles.map((v) => shopRow(v, 'vehicle')).join('')
     hBox.innerHTML = houses.map((h) => shopRow(h, 'house')).join('')
     wireShopSaves(vBox, 'vehicle')
@@ -517,6 +541,84 @@ function wireShopSaves(container, kind) {
       } catch (err) { toast(err.message, 'err') }
     })
   })
+}
+
+// ============================================================
+// Vaults (marriage)
+// ============================================================
+
+async function loadVaults() {
+  const list = document.getElementById('vault-list')
+  list.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { vaults } = await get('/vaults')
+    list.innerHTML = vaults.length
+      ? vaults.map((v) => `
+        <div class="row" data-member1="${escapeHtml(v.partner1Id)}" data-member2="${escapeHtml(v.partner2Id)}">
+          <div class="row-main">
+            <div class="row-name">💑 ${escapeHtml(v.partner1Name)} & ${escapeHtml(v.partner2Name)}</div>
+            <div class="row-sub">married ${timeAgo(v.marriedAt)} · vault: ${fmtHabz(v.vaultBalance)} habz</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn-danger btn-wipe-vault">Wipe vault</button>
+          </div>
+        </div>`).join('')
+      : '<div class="empty-state">No active marriages.</div>'
+
+    list.querySelectorAll('.btn-wipe-vault').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('.row')
+        const memberId = row.dataset.member1
+        if (!confirm('Wipe this vault and dissolve the marriage? This cannot be undone.')) return
+        try {
+          await post(`/vault/${encodeURIComponent(memberId)}/wipe`)
+          toast('Vault wiped')
+          loadVaults()
+        } catch (err) { toast(err.message, 'err') }
+      })
+    })
+  } catch (err) {
+    toast(err.message, 'err')
+    list.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`
+  }
+}
+
+// ============================================================
+// Dead / revive
+// ============================================================
+
+async function loadDead() {
+  const list = document.getElementById('dead-list')
+  list.innerHTML = '<div class="empty-state">Loading…</div>'
+  try {
+    const { users } = await get('/users/dead')
+    list.innerHTML = users.length
+      ? users.map((u) => `
+        <div class="row" data-member="${escapeHtml(u.member_id)}">
+          <div class="row-main">
+            <div class="row-name">💀 ${escapeHtml(u.push_name || u.member_id)}</div>
+            <div class="row-sub">revives ${timeUntil(u.killed_until)}</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn-secondary btn-revive-row">Revive</button>
+          </div>
+        </div>`).join('')
+      : '<div class="empty-state">Nobody is currently dead.</div>'
+
+    list.querySelectorAll('.btn-revive-row').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const memberId = btn.closest('.row').dataset.member
+        try {
+          await post(`/user/${encodeURIComponent(memberId)}/revive`)
+          toast(`${memberId} revived`)
+          loadDead()
+        } catch (err) { toast(err.message, 'err') }
+      })
+    })
+  } catch (err) {
+    toast(err.message, 'err')
+    list.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`
+  }
 }
 
 // ============================================================
