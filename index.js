@@ -122,12 +122,12 @@ app.use('/api', adminRouter)
 // dashboard, and websocket all together. Log and stay alive instead.
 process.on('uncaughtException', (err) => {
     console.error('Uncaught exception (process kept alive):', err)
-    notifyOwnerThrottled(`⚠️ Habibi hit an uncaught error but stayed alive: ${err.message}`, 120000)
+    notifyOwnerThrottled(`⚠️ Yonder hit an uncaught error but stayed alive: ${err.message}`, 120000)
 })
 
 process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection (process kept alive):', reason)
-    notifyOwnerThrottled(`⚠️ Habibi hit an unhandled rejection but stayed alive: ${reason?.message || reason}`, 120000)
+    notifyOwnerThrottled(`⚠️ Yonder hit an unhandled rejection but stayed alive: ${reason?.message || reason}`, 120000)
 })
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
@@ -203,7 +203,7 @@ async function connectToWhatsApp() {
         aiLabel: false,
         getMessage: async () => ({ conversation: '' }),
         cachedGroupMetadata: async (jid) => getCachedGroupMetadata(jid),
-        // Habibi only cares about group messages — Status broadcasts from every
+        // Yonder only cares about group messages — Status broadcasts from every
         // contact were a huge share of the CPU-heavy decrypt-failure noise for
         // content she never uses. Skipping decryption for them entirely is a
         // documented Baileys option, not a workaround.
@@ -230,7 +230,7 @@ async function connectToWhatsApp() {
 
         if (qr && !sock.authState.creds.registered && !isReadyForPairing) {
             isReadyForPairing = true
-            notifyOwner('Habibi is ready to pair. Send /pair <phone number> (country code, no +).')
+            notifyOwner('Yonder is ready to pair. Send /pair <phone number> (country code, no +).')
         }
 
         if (connection) app.set('connectionState', connection)
@@ -247,7 +247,7 @@ async function connectToWhatsApp() {
                 autoRetryStopped = true
                 console.log(`Stopped after ${reconnectAttempts} failed attempts. Waiting for /retry.`)
                 notifyOwnerThrottled(
-                    `Habibi couldn't connect after ${MAX_AUTO_RETRIES} tries and has stopped retrying automatically — send /retry when you want to try again.`,
+                    `Yonder couldn't connect after ${MAX_AUTO_RETRIES} tries and has stopped retrying automatically — send /retry when you want to try again.`,
                     300000
                 )
                 return
@@ -261,16 +261,16 @@ async function connectToWhatsApp() {
             } else {
                 console.log(`Logged out. Retrying in ${delay / 1000}s (attempt ${reconnectAttempts})...`)
                 notifyOwnerThrottled(
-                    'Habibi keeps getting logged out and is retrying automatically. Watch for the ready-to-pair message.'
+                    'Yonder keeps getting logged out and is retrying automatically. Watch for the ready-to-pair message.'
                 )
                 setTimeout(connectToWhatsApp, delay)
             }
         } else if (connection === 'open') {
-            console.log('Habibi connected successfully')
+            console.log('✅ Yonder connected successfully!')
             isReadyForPairing = false
             reconnectAttempts = 0
             autoRetryStopped = false
-            notifyOwner('Habibi connected successfully.')
+            notifyOwner('Yonder connected successfully.')
             startAutoAirdropScheduler()
 
             // Warm the group metadata cache immediately so the very first
@@ -348,7 +348,7 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
 
 bot.onText(/\/start/, (msg) => {
     if (!isOwner(msg)) return
-    bot.sendMessage(msg.chat.id, 'Habibi pairing control online. Use /pair <phone number> once she says she is ready.')
+    bot.sendMessage(msg.chat.id, 'Yonder pairing control online. Use /pair <phone number> once it says it is ready.')
 })
 
 bot.onText(/\/retry/, (msg) => {
@@ -365,11 +365,11 @@ bot.onText(/\/retry/, (msg) => {
 })
 
 app.get('/', (req, res) => {
-    res.send('Habibi is running')
+    res.send('Yonder is running')
 })
 
 server.listen(process.env.PORT || 3000, () => {
-    console.log('Health check server running')
+    console.log('🚀 Yonder is now online!')
     initWebSocket(server)
     connectToWhatsApp()
 })
