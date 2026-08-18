@@ -1,12 +1,13 @@
 {
-  "name": "habibi-whatsapp",
+  "name": "yonder-whatsapp",
   "version": "1.0.0",
-  "description": "Habibi - WhatsApp group economy bot",
+  "description": "Yonder – WhatsApp group bot with economy, AI, and chaos",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node --max-old-space-size=768 --env-file=.env index.js"
   },
+  "author": "Yonder Creator",
   "dependencies": {
     "@whiskeysockets/baileys": "github:pou-code/Baileys",
     "@supabase/supabase-js": "^2.45.0",
